@@ -5,6 +5,7 @@ import dev.jombi.kt2048.field.Position
 class Field {
     private val positions = Array(4 * 4) { Position(it % 4, it / 4, 0) }
     private val w = arrayOf(2, 2, 2, 2, 2, 2, 2, 2, 4, 4)
+    private var maxLen = 0
     init {
         new()
         new()
@@ -52,103 +53,42 @@ class Field {
         if (positions.contentEquals(copy)) return
 
         new()
+        move++
     }
 
-    private fun Array<Position>.move(d: Direction) {
-        when (d) {
-            Direction.NORTH -> {
-                repeat(4) {
-                    val gravities = Array(4) { -1 }
-                    for ((x, y, num) in this) {
-                        if (num != 0) {
-                            val grav = maxOf(++gravities[x], 0)
-                            setPosition(x, y, 0)
-                            setPosition(x, grav, num)
-                        }
-                    }
-                    merge(d)
-                }
-                val gravities = Array(4) { -1 }
-                for ((x, y, num) in this) {
-                    if (num != 0) {
-                        val grav = maxOf(++gravities[x], 0)
-                        setPosition(x, y, 0)
-                        setPosition(x, grav, num)
-                    }
-                }
-            }
+    fun set(x: Int, y: Int, num: Int) {
+        positions.setPosition(x, y, num)
+    }
 
-            Direction.SOUTH -> {
-                repeat(4) {
-                    val gravities = Array(4) { 4 }
-                    for ((x, y, num) in reversed()) {
-                        if (num != 0) {
-                            val grav = minOf(--gravities[x], 3)
-                            setPosition(x, y, 0)
-                            setPosition(x, grav, num)
-                        }
-                    }
-                    merge(d)
-                }
-                val gravities = Array(4) { 4 }
-                for (i in 0 until 4) gravities[i] = 4
-                for ((x, y, num) in reversed()) {
-                    if (num != 0) {
-                        val grav = minOf(--gravities[x], 3)
-                        setPosition(x, y, 0)
-                        setPosition(x, grav, num)
-                    }
-                }
-            }
-
-            Direction.EAST -> {
-                repeat(4) {
-                    val gravities = Array(4) { 4 }
-                    for ((x, y, num) in reversed()) {
-                        if (num != 0) {
-                            val grav = minOf(--gravities[y], 3)
-                            setPosition(x, y, 0)
-                            setPosition(grav, y, num)
-                        }
-                    }
-                    merge(d)
-                }
-                val gravities = Array(4) { 4 }
-                for (i in 0 until 4) gravities[i] = 4
-                for ((x, y, num) in reversed()) {
-                    if (num != 0) {
-                        val grav = minOf(--gravities[y], 3)
-                        setPosition(x, y, 0)
-                        setPosition(grav, y, num)
-                    }
-                }
-            }
-
-            Direction.WEST -> {
-                repeat(4) {
-                    val gravities = Array(4) { -1 }
-                    for ((x, y, num) in this) {
-                        if (num != 0) {
-                            val grav = maxOf(++gravities[y], 0)
-                            setPosition(x, y, 0)
-                            setPosition(grav, y, num)
-                        }
-                    }
-                    merge(d)
-                }
-                val gravities = Array(4) { -1 }
-                for ((x, y, num) in this) {
-                    if (num != 0) {
-                        val grav = maxOf(++gravities[y], 0)
-                        setPosition(x, y, 0)
-                        setPosition(grav, y, num)
-                    }
-                }
-            }
+    fun Array<Position>.gravity(d: Direction) {
+        val gravities = Array(4) { d.offset }
+        val thing = filter { it.num != 0 }.toMutableList()
+        if (d.offset > 0) thing.reverse()
+        for ((x, y, num) in thing) {
+            val offsetT = if (d.offsetY == 0) y else x
+            gravities[offsetT] += d.increment
+            val grav = maxOf(gravities[offsetT], 0)
+            val targetX = if (d.offsetX != 0) grav else x
+            val targetY = if (d.offsetY != 0) grav else y
+            setPosition(x, y, 0)
+            setPosition(targetX, targetY, num)
         }
     }
 
+    private fun Array<Position>.move(d: Direction) {
+        repeat(4) {
+            gravity(d)
+            merge(d)
+        }
+        gravity(d)
+    }
+
+    private var move = 0
+
     private fun emulateFinish(): Boolean {
+        if (positions.any { it.num == 2048 }) {
+            throw GameCleared(move)
+        }
         if (positions.any { it.num == 0 }) return false
         val m = arrayOf(*positions)
         for (d in Direction.values()) {
@@ -160,7 +100,10 @@ class Field {
 
     }
 
-    private fun Array<Position>.setPosition(x: Int, y: Int, num: Int) = set(x + y * 4, Position(x, y, num))
+    private fun Array<Position>.setPosition(x: Int, y: Int, num: Int) {
+        set(x + y * 4, Position(x, y, num))
+        maxLen = maxOf("$num".length, maxLen)
+    }
 
     private fun getPosition(x: Int, y: Int) = positions[x + y * 4]
     private fun getXAxisPosList(x: Int) = positions.filter { it.x == x }
@@ -175,12 +118,14 @@ class Field {
 
     fun buildConsoleUI(): String {
         val sb = StringBuilder()
+        val s = "-----" + "-".repeat(maxLen-1)
         for ((x, _, num) in positions) {
-            if (x == 0) sb.append("-------- -------- -------- --------\n")
-            sb.append("| %04d | ".format(num))
+            val minus = maxLen - "$num".length
+            if (x == 0) sb.append("$s $s $s $s\n")
+            sb.append("| ${" ".repeat(minus)}$num | ")
             if (x == 3) sb.append('\n')
         }
-        sb.append("-------- -------- -------- --------\n")
+        sb.append("$s $s $s $s\n")
         sb.append("> ")
         return "$sb"
     }
